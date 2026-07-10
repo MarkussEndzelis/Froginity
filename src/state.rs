@@ -6,12 +6,16 @@ use crate::input::InputHandler;
 use crate::ui::UI;
 use std::sync::Arc;
 
+pub const VIRTUAL_WIDTH: f32 = 800.0;
+pub const VIRTUAL_HEIGHT: f32 = 600.0;
+
 pub struct State {
     pub window: Arc<Window>,
     pub renderer: Renderer,
     pub game: Game,
     pub input: InputHandler,
     pub ui: UI,
+    pub last_time: std::time::Instant,
 }
 
 impl State {
@@ -27,6 +31,7 @@ impl State {
             game,
             input,
             ui,
+            last_time: std::time::Instant::now(),
         }
     }
 
@@ -39,7 +44,11 @@ impl State {
     }
 
     pub fn update(&mut self){
-        self.game.update(&self.input);
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(self.last_time).as_secs_f32();
+        self.last_time = now;
+
+        self.game.update(dt, &self.input);
         self.ui.update(&self.game);
     }
 

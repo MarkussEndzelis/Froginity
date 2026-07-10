@@ -36,7 +36,7 @@ impl Frog {
 
         self.y += self.y_vel * dt;
 
-        let ground_y = 600.0 - self.height;
+        let ground_y = 500.0 - self.height;
         if self.y >= ground_y {
             self.y = ground_y;
             self.y_vel = 0.0;
@@ -98,8 +98,7 @@ impl Game {
         }
     }
 
-    pub fn update(&mut self, input: &InputHandler){
-        let dt = 1.0 / 60.0;
+    pub fn update(&mut self, dt: f32, input: &InputHandler){
 
         if self.game_over {
             if input.restart_pressed{
@@ -129,7 +128,7 @@ impl Game {
             self.obstacle_timer = gap;
             let obs = Obstacle {
                 x: 800.0,
-                y: 600.0 - 40.0,
+                y: 500.0 - 40.0,
                 width: 30.0,
                 height: 40.0,
                 active: true,

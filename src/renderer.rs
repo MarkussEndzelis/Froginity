@@ -5,7 +5,8 @@ use crate::ui::UI;
 use crate::sprite::Sprite;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE};
+use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE, DIGIT_SPRITES, DIGIT_PALETTE};
+use crate::state::{VIRTUAL_WIDTH, VIRTUAL_HEIGHT};
 
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
@@ -15,7 +16,8 @@ pub struct Renderer {
     size: winit::dpi::PhysicalSize<u32>,
     pipeline: wgpu::RenderPipeline,
     white_bind_group: wgpu::BindGroup,
-    sky_texture_view: Arc<wgpu::TextureView>
+    sky_texture_view: Arc<wgpu::TextureView>,
+    digit_texture_views: Vec<Arc<wgpu::TextureView>>,
     pub white_texture_view: Arc<wgpu::TextureView>,
     pub frog_texture_view: Arc<wgpu::TextureView>,
     pub ground_texture_view: Arc<wgpu::TextureView>,
@@ -204,9 +206,10 @@ impl Renderer {
 
             let white_view = Arc::new(white_view);
 
-            let frog_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &FROG_SPRITE, &FROG_PALETTE));
-            let ground_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &GROUND_SPRITE, &GROUND_PALETTE));
-            let obstacle_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &OBSTACLE_SPRITE, &OBSTACLE_PALETTE));
+            let frog_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &FROG_SPRITE, &FROG_PALETTE));
+            let ground_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &GROUND_SPRITE, &GROUND_PALETTE));
+            let obstacle_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &OBSTACLE_SPRITE, &OBSTACLE_PALETTE));
+            let digit_texture_views: Vec<Arc<wgpu::TextureView>> = DIGIT_SPRITES.iter().map(|d| Arc::new(Self::sprite_to_texture_view(&device, &queue, d, &DIGIT_PALETTE))).collect();
 
             let sky_rgba = vec![
                 60, 140, 220, 255,
@@ -218,13 +221,29 @@ impl Renderer {
                 size: wgpu::Extent3d {width: 1, height: 2, depth_or_array_layers: 1},
                 mip_level_count: 1,
                 sample_count: 1,
-                dimension: wgpu::TextureDImension::D2,
+                dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
-            queue.write_texture(/*...*/);
-            let sky_texture_view = Arc::new(sky_texture.create_view(...));
+            
+            queue.write_texture(
+                wgpu::ImageCopyTexture{
+                    texture: &sky_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &sky_rgba,
+                wgpu::ImageDataLayout{
+                    offset: 0,
+                    bytes_per_row: Some(4 * 1),
+                    rows_per_image: Some(2),
+                },
+                wgpu::Extent3d{width: 1, height: 2, depth_or_array_layers: 1},
+            );
+
+            let sky_texture_view = Arc::new(sky_texture.create_view(&wgpu::TextureViewDescriptor::default()));
 
             Self {
                 surface,
@@ -238,6 +257,8 @@ impl Renderer {
                 frog_texture_view,
                 ground_texture_view,
                 obstacle_texture_view,
+                sky_texture_view,
+                digit_texture_views,
             }
         }
 
@@ -265,8 +286,38 @@ impl Renderer {
 
             let mut sprites_data = Vec::new();
 
-            let sky_sprite = Sprite::new(0.0, 0.0, sw, sh, [0.0,0.0,1.0,1.0], [1.0;4], self.sky_texture_view.clone());
-            let (verts, inds) = sky_sprite.rect_to_vertices(sw, sh);
+            let sky_sprite = Sprite::new(0.0, 0.0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT, [0.0,0.0,1.0,1.0], [1.0;4], self.sky_texture_view.clone());
+            
+            let (verts, inds) = sky_sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&verts),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&inds),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &self.pipeline.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry{
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&sky_sprite.texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor {
+                            mag_filter: wgpu::FilterMode::Linear,
+                            min_filter: wgpu::FilterMode::Linear,
+                            ..Default::default()
+                        })),
+                    },
+                ],
+                label: Some("bind_group"),
+            });
+            sprites_data.push((vb, ib, bind_group, inds.len()));
 
             for g in &game.grounds {
                 let sprite = Sprite::new(
@@ -275,7 +326,7 @@ impl Renderer {
                     [1.0, 1.0, 1.0, 1.0],
                     self.ground_texture_view.clone(),
                 );
-                let (verts, inds) = sprite.rect_to_vertices(sw, sh);
+                let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
                     label: Some("Vertex Buffer"),
                     contents: bytemuck::cast_slice(&verts),
@@ -315,7 +366,7 @@ impl Renderer {
                         [1.0, 1.0, 1.0, 1.0],
                         self.obstacle_texture_view.clone(),
                     );
-                    let (verts, inds) = sprite.rect_to_vertices(sw, sh);
+                    let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
                     let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
                         label: Some("Vertex Buffer"),
                         contents: bytemuck::cast_slice(&verts),
@@ -356,7 +407,7 @@ impl Renderer {
                     [1.0, 1.0, 1.0, 1.0],
                     self.frog_texture_view.clone(),
                 );
-                let (verts, inds) = frog_sprite.rect_to_vertices(sw, sh);
+                let (verts, inds) = frog_sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
                     label: Some("Vertex Buffer"),
                     contents: bytemuck::cast_slice(&verts),
@@ -395,7 +446,7 @@ impl Renderer {
                     item.color,
                     self.white_texture_view.clone(),
                 );
-                let (verts, inds) = sprite.rect_to_vertices(sw ,sh);
+                let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
                 let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
                     label: Some("Vertex Buffer"),
                     contents: bytemuck::cast_slice(&verts),
@@ -425,6 +476,26 @@ impl Renderer {
                     label: Some("bind_group"),
                 });
                 sprites_data.push((vb, ib, bind_group, inds.len()));
+            }
+
+            let digit_w = 24.0;
+            let digit_h = 40.0;
+            let mut dx = 10.0;
+            for &d in &ui.score_digits {
+                let sprite = Sprite::new(dx, 10.0, digit_w, digit_h, [0.0,0.0,1.0,1.0], [1.0;4], self.digit_texture_views[d as usize].clone());
+                let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{ label: Some("Vertex Buffer"), contents: bytemuck::cast_slice(&verts), usage: wgpu::BufferUsages::VERTEX});
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{ label: Some("Index Buffer"), contents: bytemuck::cast_slice(&inds), usage: wgpu::BufferUsages::INDEX});
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                    layout: &self.pipeline.get_bind_group_layout(0),
+                    entries: &[
+                        wgpu::BindGroupEntry{binding: 0, resource: wgpu::BindingResource::TextureView(&sprite.texture_view)},
+                        wgpu::BindGroupEntry{binding: 1, resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor{mag_filter: wgpu::FilterMode::Nearest, min_filter: wgpu::FilterMode::Nearest, ..Default::default()}))},
+                    ],
+                    label: Some("bind_group"),
+                });
+                sprites_data.push((vb, ib, bind_group, inds.len()));
+                dx += digit_w + 4.0;
             }
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor{
@@ -494,14 +565,14 @@ impl Renderer {
             &self.white_bind_group
         }
 
-        fn sprite_to_texture_view(
+        fn sprite_to_texture_view<const W: usize, const H: usize>(
             device: &wgpu::Device,
             queue: &wgpu::Queue,
-            sprite: &[[u8; 16]; 16],
+            sprite: &[[u8; W]; H],
             palette: &[[u8; 4]; 4],
         ) -> wgpu::TextureView {
-            let width = 16u32;
-            let height = 16u32;
+            let width = W as u32;
+            let height = H as u32;
             let mut data = Vec::with_capacity((width * height * 4) as usize);
             for row in sprite.iter(){
                 for &px in row.iter(){
