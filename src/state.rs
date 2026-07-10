@@ -3,10 +3,11 @@ use wgpu;
 use crate::renderer::Renderer;
 use crate::game::Game;
 use crate::input::InputHandler;
-use crate::ui::UI,
+use crate::ui::UI;
+use std::sync::Arc;
 
 pub struct State {
-    pub window: Window,
+    pub window: Arc<Window>,
     pub renderer: Renderer,
     pub game: Game,
     pub input: InputHandler,
@@ -14,14 +15,14 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new(window: &Window) -> Self {
-        let renderer = Renderer::new(window).await;
+    pub async fn new(window: Arc<Window>) -> Self {
+        let renderer = Renderer::new(&window).await;
         let game = Game::new();
         let input = InputHandler::new();
         let ui = UI::new();
 
         Self {
-            window: window.clone(),
+            window,
             renderer,
             game,
             input,

@@ -1,4 +1,5 @@
 use wgpu;
+use std::sync::Arc;
 
 pub struct Sprite {
     pub x: f32,
@@ -7,7 +8,7 @@ pub struct Sprite {
     pub height: f32,
     pub uv: [f32; 4],
     pub color: [f32; 4],
-    pub texture_view: wgpu::TextureView,
+    pub texture_view: Arc<wgpu::TextureView>,
 }
 
 impl Sprite {
@@ -18,7 +19,7 @@ impl Sprite {
         height: f32,
         uv: [f32; 4],
         color: [f32; 4],
-        texture_view: wgpu::TextureView,
+        texture_view: Arc<wgpu::TextureView>,
     ) -> Self {
         Self {
             x,

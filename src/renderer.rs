@@ -3,6 +3,9 @@ use winit::window::Window;
 use crate::game::Game;
 use crate::ui::UI;
 use crate::sprite::Sprite;
+use std::sync::Arc;
+use wgpu::util::DeviceExt;
+use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE};
 
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
@@ -12,10 +15,14 @@ pub struct Renderer {
     size: winit::dpi::PhysicalSize<u32>,
     pipeline: wgpu::RenderPipeline,
     white_bind_group: wgpu::BindGroup,
+    pub white_texture_view: Arc<wgpu::TextureView>,
+    pub frog_texture_view: Arc<wgpu::TextureView>,
+    pub ground_texture_view: Arc<wgpu::TextureView>,
+    pub obstacle_texture_view: Arc<wgpu::TextureView>,
 }
 
 impl Renderer {
-    pub async fn new(window: &Window) -> Self {
+    pub async fn new(window: &Arc<Window>) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -82,7 +89,6 @@ impl Renderer {
         };
 
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
@@ -118,6 +124,7 @@ impl Renderer {
                     module: &shader,
                     entry_point: "vs_main",
                     buffers: &[vertex_layout],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -127,13 +134,14 @@ impl Renderer {
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 }),
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
                     cull_mode: None,
-                    polygon_mode: wgpu::Polygon::Fill,
+                    polygon_mode: wgpu::PolygonMode::Fill,
                     unclipped_depth: false,
                     conservative: false,
                 },
@@ -193,6 +201,12 @@ impl Renderer {
                 label: Some("white_bind_group"),
             });
 
+            let white_view = Arc::new(white_view);
+
+            let frog_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &FROG_SPRITE, &FROG_PALETTE));
+            let ground_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &GROUND_SPRITE, &GROUND_PALETTE));
+            let obstacle_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &OBSTACLE_SPRITE, &OBSTACLE_PALETTE));
+
             Self {
                 surface,
                 device,
@@ -201,6 +215,10 @@ impl Renderer {
                 size,
                 pipeline,
                 white_bind_group,
+                white_texture_view: white_view.clone(),
+                frog_texture_view,
+                ground_texture_view,
+                obstacle_texture_view,
             }
         }
 
@@ -213,7 +231,7 @@ impl Renderer {
             }
         }
 
-        pub fn render(&mut self, game: &Game, ui: &UI) -> Result<(), wgpu::SurfaceError> {
+        pub fn render(&mut self, game: &Game, ui: &UI) -> Result<(), wgpu::SurfaceError>{
             let output = self.surface.get_current_texture()?;
             let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -224,12 +242,173 @@ impl Renderer {
             let sw = self.size.width as f32;
             let sh = self.size.height as f32;
 
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut sprites_data = Vec::new();
+
+            for g in &game.grounds {
+                let sprite = Sprite::new(
+                    g.x, g.y, g.width, g.height,
+                    [0.0, 0.0, 1.0, 1.0],
+                    [1.0, 1.0, 1.0, 1.0],
+                    self.ground_texture_view.clone(),
+                );
+                let (verts, inds) = sprite.rect_to_vertices(sw, sh);
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Index Buffer"),
+                    contents: bytemuck::cast_slice(&inds),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &self.pipeline.get_bind_group_layout(0),
+                    entries: &[
+                        wgpu::BindGroupEntry{
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&sprite.texture_view),
+                        },
+                        wgpu::BindGroupEntry{
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor{
+                                mag_filter: wgpu::FilterMode::Nearest,
+                                min_filter: wgpu::FilterMode::Nearest,
+                                ..Default::default()
+                            })),
+                        },
+                    ],
+                    label: Some("bind_group"),
+                });
+                sprites_data.push((vb, ib, bind_group, inds.len()));
+            }
+
+            for obs in &game.obstacles {
+                if obs.active {
+                    let sprite = Sprite::new(
+                        obs.x, obs.y, obs.width, obs.height,
+                        [0.0, 0.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                        self.obstacle_texture_view.clone(),
+                    );
+                    let (verts, inds) = sprite.rect_to_vertices(sw, sh);
+                    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                        label: Some("Vertex Buffer"),
+                        contents: bytemuck::cast_slice(&verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                        label: Some("Index Buffer"),
+                        contents: bytemuck::cast_slice(&inds),
+                        usage: wgpu::BufferUsages::INDEX,
+                    });
+                    let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                        layout: &self.pipeline.get_bind_group_layout(0),
+                        entries: &[
+                            wgpu::BindGroupEntry{
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&sprite.texture_view),
+                            },
+                            wgpu::BindGroupEntry{
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor {
+                                    mag_filter: wgpu::FilterMode::Nearest,
+                                    min_filter: wgpu::FilterMode::Nearest,
+                                    ..Default::default()
+                                })),
+                            },
+                        ],
+                        label: Some("bind_group"),
+                    });
+                    sprites_data.push((vb, ib, bind_group, inds.len()));
+                }
+            }
+
+            {
+                let frog_sprite = Sprite::new(
+                    game.frog.x, game.frog.y,
+                    game.frog.width, game.frog.height,
+                    [0.0, 0.0, 1.0, 1.0],
+                    [1.0, 1.0, 1.0, 1.0],
+                    self.frog_texture_view.clone(),
+                );
+                let (verts, inds) = frog_sprite.rect_to_vertices(sw, sh);
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                    label: Some("Index Buffer"),
+                    contents: bytemuck::cast_slice(&inds),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                    layout: &self.pipeline.get_bind_group_layout(0),
+                    entries: &[
+                        wgpu::BindGroupEntry{
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&frog_sprite.texture_view),
+                        },
+                        wgpu::BindGroupEntry{
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor {
+                                mag_filter: wgpu::FilterMode::Nearest,
+                                min_filter: wgpu::FilterMode::Nearest,
+                                ..Default::default()
+                            })),
+                        },
+                    ],
+                    label: Some("bind_group"),
+                });
+                sprites_data.push((vb, ib, bind_group, inds.len()));
+            }
+
+            for item in ui.sprites(){
+                let sprite = Sprite::new(
+                    item.x, item.y, item.width, item.height,
+                    [0.0, 0.0, 1.0, 1.0],
+                    item.color,
+                    self.white_texture_view.clone(),
+                );
+                let (verts, inds) = sprite.rect_to_vertices(sw ,sh);
+                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                    label: Some("Index Buffer"),
+                    contents: bytemuck::cast_slice(&inds),
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                    layout: &self.pipeline.get_bind_group_layout(0),
+                    entries: &[
+                        wgpu::BindGroupEntry{
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&sprite.texture_view),
+                        },
+                        wgpu::BindGroupEntry{
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor{
+                                mag_filter: wgpu::FilterMode::Nearest,
+                                min_filter: wgpu::FilterMode::Nearest,
+                                ..Default::default()
+                            })),
+                        },
+                    ],
+                    label: Some("bind_group"),
+                });
+                sprites_data.push((vb, ib, bind_group, inds.len()));
+            }
+
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor{
                 label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment{
                     view: &view,
                     resolve_target: None,
-                    ops: wgpu::Operations {
+                    ops: wgpu::Operations{
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: 0.1,
                             g: 0.3,
@@ -246,36 +425,14 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.pipeline);
 
-            let mut draw_sprite = |sprite: &crate::sprite::Sprite| {
-                let (verts, inds) = sprite.rect_to_vertices(sw, sh);
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&verts),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Index Buffer"),
-                    contents: bytemuck::cast_slice(&inds),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-                render_pass.set_bind_group(0, &sprite.bind_group, &[]);
+            for (vb, ib, bind_group, index_count) in &sprites_data {
+                render_pass.set_bind_group(0, &bind_group, &[]);
                 render_pass.set_vertex_buffer(0, vb.slice(..));
                 render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..inds.len() as u32, 0, 0..1);
-            };
-
-            for ground in &game.grounds {
-                draw_sprite(ground);
-            }
-            for obstacle in &game.obstacles {
-                draw_sprite(obstacle);
+                render_pass.draw_indexed(0..*index_count as u32, 0, 0..1);
             }
 
-            draw_sprite(&game.frog.sprite);
-
-            for ui_sprite in ui.sprites(){
-                draw_sprite(ui_sprite);
-            }
+            drop(render_pass);
 
             self.queue.submit(std::iter::once(encoder.finish()));
             output.present();
@@ -312,5 +469,48 @@ impl Renderer {
         pub fn white_bind_group(&self) -> &wgpu::BindGroup {
             &self.white_bind_group
         }
+
+        fn sprite_to_texture_view(
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            sprite: &[[u8; 16]; 16],
+            palette: &[[u8; 4]; 4],
+        ) -> wgpu::TextureView {
+            let width = 16u32;
+            let height = 16u32;
+            let mut data = Vec::with_capacity((width * height * 4) as usize);
+            for row in sprite.iter(){
+                for &px in row.iter(){
+                    data.extend_from_slice(&palette[px as usize]);
+                }
+            }
+
+            let texture_size = wgpu::Extent3d {width, height, depth_or_array_layers: 1};
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("sprite_texture"),
+                size: texture_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            queue.write_texture(
+                wgpu::ImageCopyTexture{
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &data,
+                wgpu::ImageDataLayout{
+                    offset: 0,
+                    bytes_per_row: Some(4 * width),
+                    rows_per_image: Some(height),
+                },
+                texture_size,
+            );
+            texture.create_view(&wgpu::TextureViewDescriptor::default())
+        }
     }
-}
