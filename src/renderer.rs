@@ -15,6 +15,7 @@ pub struct Renderer {
     size: winit::dpi::PhysicalSize<u32>,
     pipeline: wgpu::RenderPipeline,
     white_bind_group: wgpu::BindGroup,
+    sky_texture_view: Arc<wgpu::TextureView>
     pub white_texture_view: Arc<wgpu::TextureView>,
     pub frog_texture_view: Arc<wgpu::TextureView>,
     pub ground_texture_view: Arc<wgpu::TextureView>,
@@ -207,6 +208,24 @@ impl Renderer {
             let ground_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &GROUND_SPRITE, &GROUND_PALETTE));
             let obstacle_texture_view = Arc::new(Self::sprite_to_texture_view(&device, &queue, &OBSTACLE_SPRITE, &OBSTACLE_PALETTE));
 
+            let sky_rgba = vec![
+                60, 140, 220, 255,
+                180, 210, 255, 255,
+            ];
+
+            let sky_texture = device.create_texture(&wgpu::TextureDescriptor{
+                label: Some("sky_texture"),
+                size: wgpu::Extent3d {width: 1, height: 2, depth_or_array_layers: 1},
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDImension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            queue.write_texture(/*...*/);
+            let sky_texture_view = Arc::new(sky_texture.create_view(...));
+
             Self {
                 surface,
                 device,
@@ -221,6 +240,8 @@ impl Renderer {
                 obstacle_texture_view,
             }
         }
+
+
 
         pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>){
             if new_size.width > 0 && new_size.height > 0 {
@@ -243,6 +264,9 @@ impl Renderer {
             let sh = self.size.height as f32;
 
             let mut sprites_data = Vec::new();
+
+            let sky_sprite = Sprite::new(0.0, 0.0, sw, sh, [0.0,0.0,1.0,1.0], [1.0;4], self.sky_texture_view.clone());
+            let (verts, inds) = sky_sprite.rect_to_vertices(sw, sh);
 
             for g in &game.grounds {
                 let sprite = Sprite::new(
