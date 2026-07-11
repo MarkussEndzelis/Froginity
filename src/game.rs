@@ -15,11 +15,11 @@ impl Frog {
     pub fn new() -> Self {
         Self {
             x: 200.0,
-            y: 0.0,
+            y: 500.0 - 42.0,
             width: 50.0,
             height: 42.0,
             y_vel: 0.0,
-            on_ground: false,
+            on_ground: true,
         }
     }
 
@@ -89,6 +89,7 @@ pub struct Game {
     pub difficulty_timer: f32,
     pub high_score: u32,
     game_over_handled: bool,
+    pub game_started: bool,
 }
 
 impl Game {
@@ -114,10 +115,19 @@ impl Game {
             bird_timer: 2.5,
             high_score: Self::load_high_score(),
             game_over_handled: false,
+            game_started: false,
         }
     }
 
     pub fn update(&mut self, dt: f32, input: &InputHandler){
+
+        if !self.game_started {
+            self.frog.update(dt, input);
+            if input.jump_pressed {
+                self.game_started = true;
+            }
+            return;
+        }
 
         if self.game_over {
             if !self.game_over_handled{

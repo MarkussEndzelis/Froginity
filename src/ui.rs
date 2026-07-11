@@ -28,6 +28,9 @@ impl UI {
             self.items.push(UIItem {x: 270.0, y: 250.0, width: 260.0, height: 60.0, color: [1.0, 0.0, 0.0, 0.8]});
             self.items.push(UIItem {x: 310.0, y: 320.0, width: 180.0, height: 34.0, color: [1.0, 1.0, 1.0, 0.85]});
         }
+        if !game.game_started {
+            self.items.push(UIItem{x: 210.0, y: 258.0, width: 380.0, height: 40.0, color: [0.0, 0.0, 0.0, 0.55]});
+        }
     }
 
     pub fn sprites(&self) -> &[UIItem]{

@@ -216,7 +216,7 @@ impl Renderer {
 
             let digit_texture_views: Vec<Arc<wgpu::TextureView>> = DIGIT_SPRITES.iter().map(|d| Arc::new(Self::sprite_to_texture_view(&device, &queue, d, &DIGIT_PALETTE))).collect();
             let mut letter_texture_views: std::collections::HashMap<char, Arc<wgpu::TextureView>> = std::collections::HashMap::new();
-            for c in "AEGMOPRSVBT".chars(){
+            for c in "AEGMOPRSVBTC".chars(){
                 if let Some(bitmap) = letter_sprite(c){
                     letter_texture_views.insert(c, Arc::new(Self::sprite_to_texture_view(&device, &queue, &bitmap, &LETTER_PALETTE)));
                 }
@@ -581,7 +581,7 @@ impl Renderer {
                 bdx += best_digit_w + 3.0;
             }
 
-            if game.game_over {
+            
                 let draw_text = |text: &str, start_x: f32, y: f32, char_w: f32, char_h: f32, spacing: f32, color: [f32; 4], sprites_data: &mut Vec<_>| {
                     let mut dx = start_x;
                     for c in text.chars(){
@@ -604,9 +604,15 @@ impl Renderer {
                         dx += char_w + spacing;
                     }
                 };
-                draw_text("GAME_OVER", 303.0, 268.0, 18.0, 24.0, 4.0, [1.0, 1.0, 1.0, 1.0], &mut sprites_data);
-                draw_text("PRESS R", 342.0, 328.0, 14.0, 18.0, 3.0, [0.1, 0.1, 0.15, 1.0], &mut sprites_data);
-            }
+
+                if !game.game_started{
+                    draw_text("PRESS SPACE TO START", 230.0, 270.0, 14.0, 18.0, 3.0, [1.0, 1.0, 1.0, 0.9], &mut sprites_data);
+                }
+                if game.game_over{
+                    draw_text("GAME_OVER", 303.0, 268.0, 18.0, 24.0, 4.0, [1.0, 1.0, 1.0, 1.0], &mut sprites_data);
+                    draw_text("PRESS R", 342.0, 328.0, 14.0, 18.0, 3.0, [0.1, 0.1, 0.15, 1.0], &mut sprites_data);
+                }
+            
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor{
                 label: Some("Render Pass"),
