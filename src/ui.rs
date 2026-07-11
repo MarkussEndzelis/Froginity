@@ -11,16 +11,18 @@ pub struct UIItem {
 pub struct UI {
     pub items: Vec<UIItem>,
     pub score_digits: Vec<u8>,
+    pub high_score_digits: Vec<u8>,
 }
 
 impl UI {
     pub fn new() -> Self {
-        Self{items: Vec::new(), score_digits: Vec::new()}
+        Self{items: Vec::new(), score_digits: Vec::new(), high_score_digits: Vec::new()}
     }
 
     pub fn update(&mut self, game: &Game){
         self.items.clear();
         self.score_digits = game.score.to_string().bytes().map(|b| b - b'0').collect();
+        self.high_score_digits = game.high_score.to_string().bytes().map(|b| b - b'0').collect();
 
         if game.game_over {
             self.items.push(UIItem {x: 270.0, y: 250.0, width: 260.0, height: 60.0, color: [1.0, 0.0, 0.0, 0.8]});

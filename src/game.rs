@@ -1,5 +1,6 @@
 use crate::input::InputHandler;
 use rand::Rng;
+use std::fs;
 
 pub struct Frog {
     pub x: f32,
@@ -86,6 +87,8 @@ pub struct Game {
     pub obstacle_timer: f32,
     pub bird_timer: f32,
     pub difficulty_timer: f32,
+    pub high_score: u32,
+    game_over_handled: bool,
 }
 
 impl Game {
@@ -109,12 +112,21 @@ impl Game {
             score_accum: 0.0,
             birds: Vec::new(),
             bird_timer: 2.5,
+            high_score: Self::load_high_score(),
+            game_over_handled: false,
         }
     }
 
     pub fn update(&mut self, dt: f32, input: &InputHandler){
 
         if self.game_over {
+            if !self.game_over_handled{
+                if self.score > self.high_score {
+                    self.high_score = self.score;
+                    Self::save_high_score(self.high_score);
+                }
+                self.game_over_handled = true;
+            }
             if input.restart_pressed{
                 self.reset();
             }
@@ -210,6 +222,14 @@ impl Game {
         self.score = self.score_accum as u32;
     }
 
+    fn load_high_score() -> u32 {
+        fs::read_to_string("highscore.txt").ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0)
+    }
+
+    fn save_high_score(score: u32){
+        let _ = fs::write("highscore.txt", score.to_string());
+    }
+
     pub fn reset(&mut self){
         self.frog.x = 200.0;
         self.frog.y = 0.0;
@@ -224,6 +244,7 @@ impl Game {
         self.score_accum = 0.0;
         self.birds.clear();
         self.bird_timer = 2.5;
+        self.game_over_handled = false;
         
         let ground_width = 800.0;
         for i in 0..2 {
