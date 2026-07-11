@@ -15,8 +15,8 @@ impl Frog {
         Self {
             x: 200.0,
             y: 0.0,
-            width: 40.0,
-            height: 50.0,
+            width: 50.0,
+            height: 42.0,
             y_vel: 0.0,
             on_ground: false,
         }
@@ -66,15 +66,25 @@ pub struct Obstacle {
     pub active: bool,
 }
 
+pub struct Bird {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub active: bool,
+}
+
 pub struct Game {
     pub frog: Frog,
     pub grounds: Vec<Ground>,
     pub obstacles: Vec<Obstacle>,
+    pub birds: Vec<Bird>,
     pub score: u32,
     score_accum: f32,
     pub game_over: bool,
     pub speed: f32,
     pub obstacle_timer: f32,
+    pub bird_timer: f32,
     pub difficulty_timer: f32,
 }
 
@@ -97,6 +107,8 @@ impl Game {
             obstacle_timer: 1.5,
             difficulty_timer: 0.0,
             score_accum: 0.0,
+            birds: Vec::new(),
+            bird_timer: 2.5,
         }
     }
 
@@ -138,6 +150,22 @@ impl Game {
             self.obstacles.push(obs);
         }
 
+        self.bird_timer -= dt;
+        if self.bird_timer <= 0.0 {
+            let mut rng = rand::thread_rng();
+            self.bird_timer = rng.gen_range(2.5..4.5);
+            let fly_y = rng.gen_range(220.0..380.0);
+            self.birds.push(Bird {x: 800.0, y: fly_y, width: 34.0, height: 24.0, active: true});
+        }
+
+        for b in &mut self.birds {
+            b.x -= (self.speed * 1.15) * dt;
+            if b.x + b.width < 0.0 {
+                b.active = false;
+            }
+        }
+        self.birds.retain(|b| b.active);
+
         for obs in &mut self.obstacles {
             obs.x -= self.speed * dt;
             if obs.x + obs.width < 0.0 {
@@ -147,11 +175,32 @@ impl Game {
         self.obstacles.retain(|o| o.active);
 
         for obs in &self.obstacles {
-            if self.frog.x + self.frog.width > obs.x
-                && self.frog.x < obs.x + obs.width
-                && self.frog.y + self.frog.height > obs.y
-                && self.frog.y < obs.y + obs.height
-            {
+            let fx = self.frog.x + 6.0;
+            let fy = self.frog.y + 7.0;
+            let fw = self.frog.width - 12.0;
+            let fh = self.frog.height - 14.0;
+
+            let ox = obs.x + 4.0;
+            let oy = obs.y + 4.0;
+            let ow = obs.width - 8.0;
+            let oh = obs.height - 8.0;
+
+            if fx + fw > ox && fx < ox + ow && fy + fh > oy && fy < oy + oh{
+                self.game_over = true;
+                break;
+            }
+        }
+
+        for b in &self.birds {
+            let fx = self.frog.x + 7.0;
+            let fy = self.frog.y + 6.0;
+            let fw = self.frog.width - 14.0;
+            let fh = self.frog.height - 12.0;
+            let bx = b.x + 5.0;
+            let by = b.y + 5.0;
+            let bw = b.width - 10.0;
+            let bh = b.height - 10.0;
+            if fx + fw > bx && fx < bx + bw && fy + fh > by && fy < by + bh {
                 self.game_over = true;
                 break;
             }
@@ -173,6 +222,8 @@ impl Game {
         self.obstacle_timer = 1.5;
         self.difficulty_timer = 0.0;
         self.score_accum = 0.0;
+        self.birds.clear();
+        self.bird_timer = 2.5;
         
         let ground_width = 800.0;
         for i in 0..2 {

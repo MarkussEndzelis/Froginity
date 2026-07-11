@@ -5,7 +5,7 @@ use crate::ui::UI;
 use crate::sprite::Sprite;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE, DIGIT_SPRITES, DIGIT_PALETTE, LETTER_PALETTE, letter_sprite};
+use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE, DIGIT_SPRITES, DIGIT_PALETTE, LETTER_PALETTE, letter_sprite, BIRD_PALETTE, BIRD_SPRITE};
 use crate::state::{VIRTUAL_WIDTH, VIRTUAL_HEIGHT};
 
 pub struct Renderer {
@@ -23,6 +23,7 @@ pub struct Renderer {
     pub frog_texture_view: Arc<wgpu::TextureView>,
     pub ground_texture_view: Arc<wgpu::TextureView>,
     pub obstacle_texture_view: Arc<wgpu::TextureView>,
+    pub bird_texture_view: Arc<wgpu::TextureView>,
 }
 
 impl Renderer {
@@ -207,9 +208,10 @@ impl Renderer {
 
             let white_view = Arc::new(white_view);
 
-            let frog_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &FROG_SPRITE, &FROG_PALETTE));
+            let frog_texture_view = Arc::new(Self::sprite_to_texture_view::<32, 32>(&device, &queue, &FROG_SPRITE, &FROG_PALETTE));
             let ground_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &GROUND_SPRITE, &GROUND_PALETTE));
             let obstacle_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &OBSTACLE_SPRITE, &OBSTACLE_PALETTE));
+            let bird_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &BIRD_SPRITE, &BIRD_PALETTE));
             let digit_texture_views: Vec<Arc<wgpu::TextureView>> = DIGIT_SPRITES.iter().map(|d| Arc::new(Self::sprite_to_texture_view(&device, &queue, d, &DIGIT_PALETTE))).collect();
 
             let digit_texture_views: Vec<Arc<wgpu::TextureView>> = DIGIT_SPRITES.iter().map(|d| Arc::new(Self::sprite_to_texture_view(&device, &queue, d, &DIGIT_PALETTE))).collect();
@@ -266,6 +268,7 @@ impl Renderer {
                 frog_texture_view,
                 ground_texture_view,
                 obstacle_texture_view,
+                bird_texture_view,
                 sky_texture_view,
                 digit_texture_views,
                 letter_texture_views,
@@ -409,11 +412,40 @@ impl Renderer {
                 }
             }
 
+            for b in &game.birds {
+                if b.active {
+                    let sprite = Sprite::new(
+                        b.x, b.y, b.width, b.height,
+                        [0.0, 0.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                        self.bird_texture_view.clone(),
+                    );
+                    let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+                    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                        label: Some("Vertex Buffer"), contents: bytemuck::cast_slice(&verts), usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                        label: Some("Index Buffer"), contents: bytemuck::cast_slice(&inds), usage: wgpu::BufferUsages::INDEX,
+                    });
+                    let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                        layout: &self.pipeline.get_bind_group_layout(0),
+                        entries: &[
+                            wgpu::BindGroupEntry{binding: 0, resource: wgpu::BindingResource::TextureView(&sprite.texture_view)},
+                            wgpu::BindGroupEntry{binding: 1, resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor{
+                                mag_filter: wgpu::FilterMode::Nearest, min_filter: wgpu::FilterMode::Nearest, ..Default::default()
+                            }))},
+                        ],
+                        label: Some("bind_group"),
+                    });
+                    sprites_data.push((vb, ib, bind_group, inds.len()));
+                }
+            }
+
             {
                 let frog_sprite = Sprite::new(
                     game.frog.x, game.frog.y,
                     game.frog.width, game.frog.height,
-                    [0.0, 0.0, 1.0, 1.0],
+                    [1.0, 0.0, 0.0, 1.0],
                     [1.0, 1.0, 1.0, 1.0],
                     self.frog_texture_view.clone(),
                 );
@@ -606,7 +638,7 @@ impl Renderer {
             device: &wgpu::Device,
             queue: &wgpu::Queue,
             sprite: &[[u8; W]; H],
-            palette: &[[u8; 4]; 4],
+            palette: &[[u8; 4]],
         ) -> wgpu::TextureView {
             let width = W as u32;
             let height = H as u32;
