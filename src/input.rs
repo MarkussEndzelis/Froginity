@@ -5,6 +5,7 @@ pub struct InputHandler {
     pub jump_pressed: bool,
     pub jump_held: bool,
     pub restart_pressed: bool,
+    restart_held: bool,
 }
 
 impl InputHandler {
@@ -13,6 +14,7 @@ impl InputHandler {
             jump_pressed: false,
             jump_held: false,
             restart_pressed: false,
+            restart_held: false,
         }
     }
 
@@ -20,13 +22,24 @@ impl InputHandler {
         let pressed = event.state == ElementState::Pressed;
         match event.physical_key {
             PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::ArrowUp) | PhysicalKey::Code(KeyCode::KeyW) => {
-                self.jump_pressed = pressed && !self.jump_held;
+                if pressed && !self.jump_held{
+                    self.jump_pressed = true;
+                }
                 self.jump_held = pressed;
             }
             PhysicalKey::Code(KeyCode::KeyR) => {
-                self.restart_pressed = pressed;
+                if pressed && !self.restart_held {
+                    self.restart_pressed = true;
+                }
+                self.restart_held = pressed;
             }
+            
             _ => {}
         }
+    }
+
+    pub fn end_frame(&mut self){
+        self.jump_pressed = false;
+        self.restart_pressed = false;
     }
 }

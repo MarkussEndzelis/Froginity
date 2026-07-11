@@ -23,8 +23,8 @@ impl UI {
         self.score_digits = game.score.to_string().bytes().map(|b| b - b'0').collect();
 
         if game.game_over {
-            self.items.push(UIItem {x: 280.0, y: 250.0, width: 200.0, height: 60.0, color: [1.0, 0.0, 0.0, 0.8]});
-            self.items.push(UIItem {x: 300.0, y: 320.0, width: 160.0, height: 30.0, color: [1.0, 1.0, 1.0, 0.8]});
+            self.items.push(UIItem {x: 270.0, y: 250.0, width: 260.0, height: 60.0, color: [1.0, 0.0, 0.0, 0.8]});
+            self.items.push(UIItem {x: 310.0, y: 320.0, width: 180.0, height: 34.0, color: [1.0, 1.0, 1.0, 0.85]});
         }
     }
 

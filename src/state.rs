@@ -50,6 +50,7 @@ impl State {
 
         self.game.update(dt, &self.input);
         self.ui.update(&self.game);
+        self.input.end_frame();
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

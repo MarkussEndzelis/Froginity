@@ -5,7 +5,7 @@ use crate::ui::UI;
 use crate::sprite::Sprite;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE, DIGIT_SPRITES, DIGIT_PALETTE};
+use crate::sprites::{FROG_PALETTE, FROG_SPRITE, GROUND_PALETTE, GROUND_SPRITE, OBSTACLE_PALETTE, OBSTACLE_SPRITE, DIGIT_SPRITES, DIGIT_PALETTE, LETTER_PALETTE, letter_sprite};
 use crate::state::{VIRTUAL_WIDTH, VIRTUAL_HEIGHT};
 
 pub struct Renderer {
@@ -18,6 +18,7 @@ pub struct Renderer {
     white_bind_group: wgpu::BindGroup,
     sky_texture_view: Arc<wgpu::TextureView>,
     digit_texture_views: Vec<Arc<wgpu::TextureView>>,
+    letter_texture_views:std::collections::HashMap<char, Arc<wgpu::TextureView>>,
     pub white_texture_view: Arc<wgpu::TextureView>,
     pub frog_texture_view: Arc<wgpu::TextureView>,
     pub ground_texture_view: Arc<wgpu::TextureView>,
@@ -211,6 +212,14 @@ impl Renderer {
             let obstacle_texture_view = Arc::new(Self::sprite_to_texture_view::<16, 16>(&device, &queue, &OBSTACLE_SPRITE, &OBSTACLE_PALETTE));
             let digit_texture_views: Vec<Arc<wgpu::TextureView>> = DIGIT_SPRITES.iter().map(|d| Arc::new(Self::sprite_to_texture_view(&device, &queue, d, &DIGIT_PALETTE))).collect();
 
+            let digit_texture_views: Vec<Arc<wgpu::TextureView>> = DIGIT_SPRITES.iter().map(|d| Arc::new(Self::sprite_to_texture_view(&device, &queue, d, &DIGIT_PALETTE))).collect();
+            let mut letter_texture_views: std::collections::HashMap<char, Arc<wgpu::TextureView>> = std::collections::HashMap::new();
+            for c in "AEGMOPRSV".chars(){
+                if let Some(bitmap) = letter_sprite(c){
+                    letter_texture_views.insert(c, Arc::new(Self::sprite_to_texture_view(&device, &queue, &bitmap, &LETTER_PALETTE)));
+                }
+            }
+
             let sky_rgba = vec![
                 60, 140, 220, 255,
                 180, 210, 255, 255,
@@ -259,6 +268,7 @@ impl Renderer {
                 obstacle_texture_view,
                 sky_texture_view,
                 digit_texture_views,
+                letter_texture_views,
             }
         }
 
@@ -478,9 +488,9 @@ impl Renderer {
                 sprites_data.push((vb, ib, bind_group, inds.len()));
             }
 
-            let digit_w = 24.0;
-            let digit_h = 40.0;
-            let mut dx = 10.0;
+            let digit_w = 18.0;
+            let digit_h = 30.0;
+            let mut dx = 16.0;
             for &d in &ui.score_digits {
                 let sprite = Sprite::new(dx, 10.0, digit_w, digit_h, [0.0,0.0,1.0,1.0], [1.0;4], self.digit_texture_views[d as usize].clone());
                 let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
@@ -496,6 +506,33 @@ impl Renderer {
                 });
                 sprites_data.push((vb, ib, bind_group, inds.len()));
                 dx += digit_w + 4.0;
+            }
+
+            if game.game_over {
+                let draw_text = |text: &str, start_x: f32, y: f32, char_w: f32, char_h: f32, spacing: f32, color: [f32; 4], sprites_data: &mut Vec<_>| {
+                    let mut dx = start_x;
+                    for c in text.chars(){
+                        if c == ' ' {dx += char_w + spacing; continue; }
+                        if let Some(tex) = self.letter_texture_views.get(&c){
+                            let sprite = Sprite::new(dx, y, char_w, char_h, [0.0,0.0,1.0,1.0], color, tex.clone());
+                            let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+                            let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{label: Some("Vertex Buffer"), contents: bytemuck::cast_slice(&verts), usage: wgpu::BufferUsages::VERTEX});
+                            let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{label: Some("Index Buffer"), contents: bytemuck::cast_slice(&inds), usage: wgpu::BufferUsages::INDEX});
+                            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                                layout: &self.pipeline.get_bind_group_layout(0),
+                                entries: &[
+                                    wgpu::BindGroupEntry{binding: 0, resource: wgpu::BindingResource::TextureView(&sprite.texture_view)},
+                                    wgpu::BindGroupEntry{binding: 1, resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor{mag_filter: wgpu::FilterMode::Nearest, min_filter: wgpu::FilterMode::Nearest, ..Default::default()}))},
+                                ],
+                                label: Some("bind_group"),
+                            });
+                            sprites_data.push((vb, ib, bind_group, inds.len()));
+                        }
+                        dx += char_w + spacing;
+                    }
+                };
+                draw_text("GAME_OVER", 303.0, 268.0, 18.0, 24.0, 4.0, [1.0, 1.0, 1.0, 1.0], &mut sprites_data);
+                draw_text("PRESS R", 342.0, 328.0, 14.0, 18.0, 3.0, [0.1, 0.1, 0.15, 1.0], &mut sprites_data);
             }
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor{

@@ -23,11 +23,11 @@ impl Frog {
     }
 
     pub fn update(&mut self, dt: f32, input: &InputHandler) {
-        let gravity = 800.0;
+        let gravity = 650.0;
         self.y_vel += gravity * dt;
 
         if input.jump_pressed && self.on_ground {
-            self.y_vel = -450.0;
+            self.y_vel = -620.0;
             self.on_ground = false;
         }
         if !input.jump_held && self.y_vel < 0.0 {
@@ -71,6 +71,7 @@ pub struct Game {
     pub grounds: Vec<Ground>,
     pub obstacles: Vec<Obstacle>,
     pub score: u32,
+    score_accum: f32,
     pub game_over: bool,
     pub speed: f32,
     pub obstacle_timer: f32,
@@ -95,6 +96,7 @@ impl Game {
             speed: 300.0,
             obstacle_timer: 1.5,
             difficulty_timer: 0.0,
+            score_accum: 0.0,
         }
     }
 
@@ -155,7 +157,8 @@ impl Game {
             }
         }
 
-        self.score = (self.score as f32 + self.speed * dt * 0.1) as u32;
+        self.score_accum += self.speed * dt * 0.1;
+        self.score = self.score_accum as u32;
     }
 
     pub fn reset(&mut self){
@@ -169,6 +172,7 @@ impl Game {
         self.speed = 300.0;
         self.obstacle_timer = 1.5;
         self.difficulty_timer = 0.0;
+        self.score_accum = 0.0;
         
         let ground_width = 800.0;
         for i in 0..2 {
