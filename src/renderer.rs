@@ -371,6 +371,38 @@ impl Renderer {
                 sprites_data.push((vb, ib, bind_group, inds.len()));
             }
 
+            for l in &game.lakes {
+                if l.active {
+                    let visual_y = 500.0;
+                    let visual_height = 100.0;
+                    let sprite = Sprite::new(
+                        l.x, visual_y, l.width, visual_height,
+                        [0.0, 0.0, 1.0, 1.0],
+                        [0.15, 0.45, 0.9, 1.0],
+                        self.white_texture_view.clone(),
+                    );
+
+                    let (verts, inds) = sprite.rect_to_vertices(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+                    let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                        label: Some("Vertex Buffer"), contents: bytemuck::cast_slice(&verts), usage: wgpu::BufferUsages::VERTEX, 
+                    });
+                    let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor{
+                        label: Some("Index Buffer"), contents: bytemuck::cast_slice(&inds), usage: wgpu::BufferUsages::INDEX,
+                    });
+                    let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor{
+                        layout: &self.pipeline.get_bind_group_layout(0),
+                        entries: &[
+                            wgpu::BindGroupEntry{binding: 0, resource: wgpu::BindingResource::TextureView(&sprite.texture_view)},
+                            wgpu::BindGroupEntry{binding: 1, resource: wgpu::BindingResource::Sampler(&self.device.create_sampler(&wgpu::SamplerDescriptor{
+                                mag_filter: wgpu::FilterMode::Nearest, min_filter: wgpu::FilterMode::Nearest, ..Default::default()
+                            }))},
+                        ],
+                        label: Some("bind_group"),
+                    });
+                    sprites_data.push((vb, ib, bind_group, inds.len()));
+                }
+            }
+
             for obs in &game.obstacles {
                 if obs.active {
                     let sprite = Sprite::new(

@@ -67,6 +67,14 @@ pub struct Obstacle {
     pub active: bool,
 }
 
+pub struct Lake {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub active: bool,
+}
+
 pub struct Bird {
     pub x: f32,
     pub y: f32,
@@ -90,6 +98,8 @@ pub struct Game {
     pub high_score: u32,
     game_over_handled: bool,
     pub game_started: bool,
+    pub lakes: Vec<Lake>,
+    lake_timer: f32,
 }
 
 impl Game {
@@ -116,6 +126,8 @@ impl Game {
             high_score: Self::load_high_score(),
             game_over_handled: false,
             game_started: false,
+            lakes: Vec::new(),
+            lake_timer: 3.5,
         }
     }
 
@@ -188,6 +200,29 @@ impl Game {
         }
         self.birds.retain(|b| b.active);
 
+        self.lake_timer -= dt;
+        if self.lake_timer <= 0.0 {
+            let mut rng = rand::thread_rng();
+            self.lake_timer = rng.gen_range(3.0..5.5);
+            let lake_width = rng.gen_range(40.0..75.0);
+            self.lakes.push(Lake {
+                x: 800.0,
+                y: 500.0 - 20.0,
+                width: lake_width,
+                height: 20.0,
+                active: true,
+            });
+        }
+
+        for l in &mut self.lakes{
+            l.x -= self.speed * dt;
+            if l.x + l.width < 0.0 {
+                l.active = false;
+            }
+        }
+
+        self.lakes.retain(|l| l.active);
+
         for obs in &mut self.obstacles {
             obs.x -= self.speed * dt;
             if obs.x + obs.width < 0.0 {
@@ -228,6 +263,23 @@ impl Game {
             }
         }
 
+        for l in &self.lakes {
+            let fx = self.frog.x + 6.0;
+            let fy = self.frog.y + 7.0;
+            let fw = self.frog.width - 12.0;
+            let fh = self.frog.height - 14.0;
+
+            let lx = l.x + 4.0;
+            let ly = l.y + 4.0;
+            let lw = l.width - 8.0;
+            let lh = l.height - 8.0;
+
+            if fx + fw > lx && fx < lx + lw && fy + fh > ly && fy < ly + lh {
+                self.game_over = true;
+                break;
+            }
+        }
+
         self.score_accum += self.speed * dt * 0.1;
         self.score = self.score_accum as u32;
     }
@@ -255,6 +307,8 @@ impl Game {
         self.birds.clear();
         self.bird_timer = 2.5;
         self.game_over_handled = false;
+        self.lakes.clear();
+        self.lake_timer = 3.5;
         
         let ground_width = 800.0;
         for i in 0..2 {
