@@ -373,10 +373,8 @@ impl Renderer {
 
             for l in &game.lakes {
                 if l.active {
-                    let visual_y = 500.0;
-                    let visual_height = 100.0;
                     let sprite = Sprite::new(
-                        l.x, visual_y, l.width, visual_height,
+                        l.x, 500.0, l.width, 31.0,
                         [0.0, 0.0, 1.0, 1.0],
                         [0.15, 0.45, 0.9, 1.0],
                         self.white_texture_view.clone(),

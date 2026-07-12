@@ -108,7 +108,7 @@ impl Game {
         let ground_height = 100.0;
         let ground_width = 800.0;
         for i in 0..2 {
-            grounds.push(Ground::new(i as f32 * ground_width, 600.0 - ground_height, ground_width, ground_height));
+            grounds.push(Ground::new(i as f32 * ground_width, 600.0 - ground_height - 19.0, ground_width, ground_height));
         }
 
         Self {
@@ -294,9 +294,9 @@ impl Game {
 
     pub fn reset(&mut self){
         self.frog.x = 200.0;
-        self.frog.y = 0.0;
+        self.frog.y = 500.0 - 42.0;
         self.frog.y_vel = 0.0;
-        self.frog.on_ground = false;
+        self.frog.on_ground = true;
         self.obstacles.clear();
         self.score = 0;
         self.game_over = false;
