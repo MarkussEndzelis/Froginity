@@ -13,7 +13,7 @@ Froginity is a windows playable game where you play as a frog and dodge obstacle
 - Lakes
 
 ## How to play
-Press space to jump low
+Press space to jump low,
 Hold space to jump higher
 
 ## How to download
