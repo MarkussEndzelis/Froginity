@@ -19,12 +19,12 @@ Hold space to jump higher
 ## How to download
 1. Download the zip file from releases
 2. Extract/unzip the folder anywhere on your PC
-3. Open the extracted folder and double click SnakePlus.exe to play
+3. Open the extracted folder and double click Froginity.exe to play
 
 If Windows SmartScreen blocks it, click "More info" then "Run anyway".
 
 ## Tech stack
-Built in Vs Code
+Vs Code
 Rust 
 
 ## System requirements
